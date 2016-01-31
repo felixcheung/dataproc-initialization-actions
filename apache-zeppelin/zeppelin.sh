@@ -11,7 +11,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.set -x -e
+# limitations under the License.
 
 # This init script installs Apache Zeppelin on the master node of a Cloud
 # Dataproc cluster. Zeppelin is also configured based on the size of your
@@ -24,32 +24,23 @@ EXECUTOR_MEMORY="$(grep spark.executor.memory /etc/spark/conf/spark-defaults.con
 # Set these Spark and Hadoop versions based on your Dataproc version
 SPARK_VERSION="1.5.2"
 HADOOP_VERSION="2.7.1"
+ZEPPELIN_VERSION="0.5.6-incubating"
 
 # Only run on the master node
 ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
 if [[ "${ROLE}" == 'Master' ]]; then
-	
-  # Install Maven 3
-  mkdir -p /tmp/maven
-  cd /tmp/maven
-  wget "ftp://mirror.reverse.net/pub/apache/maven/maven-3/3.3.3/binaries/apache-maven-3.3.3-bin.tar.gz" -P /tmp/
-  tar -xf /tmp/apache-maven-3.3.3-bin.tar.gz -C /usr/lib/
-  ln -s /usr/lib/apache-maven-3.3.3 /usr/lib/apache-maven
-  ln -s /usr/lib/apache-maven/bin/mvn /usr/bin/mvn
+  # Get download address from mirror
+	MIRROR_INFO=$(curl -s "http://www.apache.org/dyn/closer.cgi/incubator/zeppelin/${ZEPPELIN_VERSION}/zeppelin-${ZEPPELIN_VERSION}-bin-all.tgz?asjson=1")
+  PREFFERED=$(echo "${MIRROR_INFO}" | grep preferred | sed 's/[^"]*.preferred.: .\([^"]*\).*/\1/g')
+  PATHINFO=$(echo "${MIRROR_INFO}" | grep path_info | sed 's/[^"]*.path_info.: .\([^"]*\).*/\1/g')
+	cd /usr/lib/
+	# Download Zeppelin
+  wget -q "${PREFFERED}${PATHINFO}"
+	mkdir -p /usr/lib/incubator-zeppelin
+	tar zxf zeppelin-${ZEPPELIN_VERSION}-bin-all.tgz -C /usr/lib/incubator-zeppelin --strip-components=1
+  rm -f zeppelin-${ZEPPELIN_VERSION}-bin-all.tgz
 
-  # Install dependencies
-  apt-get install -y git vim emacs nodejs npm
-  ln -s /usr/bin/nodejs /usr/bin/node
-  npm update -g npm
-  npm install -g grunt-cli
-  npm install -g grunt
-  npm install -g bower
-
-  # Install zeppelin
-  cd /usr/lib/
-  git clone https://github.com/apache/incubator-zeppelin.git
   cd incubator-zeppelin
-  mvn clean install -DskipTests "-Dspark.version=$SPARK_VERSION" "-Dhadoop.version=$HADOOP_VERSION" -Pyarn -Phadoop-2.6 -Pspark-1.5 -Ppyspark
   mkdir -p logs run conf
   cat > conf/zeppelin-env.sh <<EOF
 #!/bin/bash
@@ -71,9 +62,7 @@ if [[ "${ROLE}" == 'Master' ]]; then
 #
 
 export MASTER="yarn-client" # Spark master url. eg. spark://master_addr:7077. Leave empty if you want to use local mode.
-export ZEPPELIN_JAVA_OPTS="-Dhdp.version=2.7.1" # Additional jvm options. for example, export ZEPPELIN_JAVA_OPTS="-Dspark.executor.memory=8g -Dspark.cores.max=16"
-export ZEPPELIN_MEM=" "  # Zeppelin jvm mem options Default -Xmx1024m -XX:MaxPermSize=512m
-
+export ZEPPELIN_JAVA_OPTS="-Dhdp.version=$HADOOP_VERSION" # Additional jvm options. for example, export ZEPPELIN_JAVA_OPTS="-Dspark.executor.memory=8g -Dspark.cores.max=16"
 
 #### Spark interpreter configuration ####
 
@@ -82,7 +71,7 @@ export ZEPPELIN_MEM=" "  # Zeppelin jvm mem options Default -Xmx1024m -XX:MaxPer
 ##
 
 export SPARK_HOME="/usr/lib/spark" # (required) When it is defined, load it instead of Zeppelin embedded Spark libraries
-export SPARK_SUBMIT_OPTIONS="--executor-memory $EXECUTOR_MEMORY"                   # (optional) extra options to pass to spark submit. eg) "--driver-memory 512M --executor-memory 1G".
+export SPARK_SUBMIT_OPTIONS="--executor-memory $EXECUTOR_MEMORY" # (optional) extra options to pass to spark submit. eg) "--driver-memory 512M --executor-memory 1G".
 
 ## Use embedded spark binaries ##
 ## without SPARK_HOME defined, Zeppelin still able to run spark interpreter process using embedded spark binaries.
@@ -90,8 +79,10 @@ export SPARK_SUBMIT_OPTIONS="--executor-memory $EXECUTOR_MEMORY"                
 ##
 
 export HADOOP_CONF_DIR="/etc/hadoop/conf" # yarn-site.xml is located in configuration directory in HADOOP_CONF_DIR.
-# Pyspark (supported with Spark 1.2.1 and above)
-# To configure pyspark, you need to set spark distribution's path to 'spark.home' property in Interpreter setting screen in Zeppelin GUI
+
+## Pyspark (supported with Spark 1.2.1 and above)
+## To configure pyspark, you need to set spark distribution's path to 'spark.home' property in Interpreter setting screen in Zeppelin GUI
+##
 
 export PYSPARK_PYTHON="/usr/bin/python" # path to the python command. must be the same path on the driver(Zeppelin) and all workers.
 export PYTHONPATH="/usr/bin/python"
@@ -99,7 +90,7 @@ export PYTHONPATH="/usr/bin/python"
 ## Spark interpreter options ##
 ##
 # export ZEPPELIN_SPARK_USEHIVECONTEXT  # Use HiveContext instead of SQLContext if set true. true by default.
-# export ZEPPELIN_SPARK_CONCURRENTSQL   # Execute multiple SQL concurrently if set true. false by default.
+export ZEPPELIN_SPARK_CONCURRENTSQL   # Execute multiple SQL concurrently if set true. false by default.
 # export ZEPPELIN_SPARK_MAXRESULT       # Max number of SparkSQL result to display. 1000 by default.
 
 EOF
