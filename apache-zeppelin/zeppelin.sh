@@ -24,21 +24,48 @@ EXECUTOR_MEMORY="$(grep spark.executor.memory /etc/spark/conf/spark-defaults.con
 # Set these Spark and Hadoop versions based on your Dataproc version
 SPARK_VERSION="1.5.2"
 HADOOP_VERSION="2.7.1"
-ZEPPELIN_VERSION="0.5.6-incubating"
+ZEPPELIN_VERSION="0.6.0-incubating"
 
 # Only run on the master node
 ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
 if [[ "${ROLE}" == 'Master' ]]; then
-  # Get download address from mirror
-	MIRROR_INFO=$(curl -s "http://www.apache.org/dyn/closer.cgi/incubator/zeppelin/${ZEPPELIN_VERSION}/zeppelin-${ZEPPELIN_VERSION}-bin-all.tgz?asjson=1")
-  PREFFERED=$(echo "${MIRROR_INFO}" | grep preferred | sed 's/[^"]*.preferred.: .\([^"]*\).*/\1/g')
-  PATHINFO=$(echo "${MIRROR_INFO}" | grep path_info | sed 's/[^"]*.path_info.: .\([^"]*\).*/\1/g')
-	cd /usr/lib/
-	# Download Zeppelin
-  wget -q "${PREFFERED}${PATHINFO}"
-	mkdir -p /usr/lib/incubator-zeppelin
-	tar zxf zeppelin-${ZEPPELIN_VERSION}-bin-all.tgz -C /usr/lib/incubator-zeppelin --strip-components=1
-  rm -f zeppelin-${ZEPPELIN_VERSION}-bin-all.tgz
+  # 1. Python
+  apt-get -y install python-pip
+  apt-get -y install python-dev
+  apt-get -y install python-matplotlib
+
+  # 2. Python wordcloud
+  pip install Image
+  wget https://github.com/amueller/word_cloud/archive/master.zip
+  unzip master.zip
+  rm -f master.zip
+  pushd word_cloud-master
+  pip install -r requirements.txt
+  python setup.py install
+  popd
+
+  # 3. Font
+  gsutil cp gs://fc_auto_zeppelin/CabinSketch-Bold.ttf /usr/share/fonts/
+  chmod 644 /usr/share/fonts/CabinSketch-Bold.ttf
+  fc-cache -fv
+
+  # 4. Data files
+#  pushd /tmp
+#  gsutil cp gs://fc_auto_zeppelin/kddcupsmall /tmp/
+#  gsutil cp gs://fc_auto_zeppelin/text8_lines? /tmp/
+#  hadoop fs -mkdir /data
+#  hadoop fs -put /tmp/kddcupsmall /data/
+#  hadoop fs -put /tmp/text8_lines? /data/
+#  rm -f kddcupsmall
+#  rm -f text8_lines?
+#  popd
+
+  # 5. Zeppelin
+  gsutil cp gs://fc_auto_zeppelin/zeppelin-${ZEPPELIN_VERSION}-SNAPSHOT.tar.gz /usr/lib/
+  cd /usr/lib/
+  mkdir -p /usr/lib/incubator-zeppelin
+  tar zxf zeppelin-${ZEPPELIN_VERSION}-SNAPSHOT.tar.gz -C /usr/lib/incubator-zeppelin --strip-components=1
+  rm -f zeppelin-${ZEPPELIN_VERSION}-SNAPSHOT.tar.gz
 
   cd incubator-zeppelin
   mkdir -p logs run conf
